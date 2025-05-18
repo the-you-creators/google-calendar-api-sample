@@ -47,13 +47,13 @@ npm install
 イベント取得時に以下のオプションが利用可能です：
 
 ```bash
-node index.js events [--start YYYY-MM-DD] [--end YYYY-MM-DD] [--format json|csv|text] [--summary daily] [--exclude keyword1,keyword2,...] [--exclude-mode contains|exact|word|any|all|regex]
+node index.js events [--start YYYY-MM-DD] [--end YYYY-MM-DD] [--format json|csv|text] [--summary daily|weekly|monthly] [--exclude keyword1,keyword2,...] [--exclude-mode contains|exact|word|any|all|regex]
 ```
 
 - `--start YYYY-MM-DD` - 開始日を指定（例: 2025-05-01）
 - `--end YYYY-MM-DD` - 終了日を指定（例: 2025-05-31）
 - `--format FORMAT` - 出力形式を指定（json, csv, text のいずれか、デフォルトはjson）
-- `--summary daily` - 日別の時間集計を表示
+- `--summary TYPE` - 集計タイプを指定（daily, weekly, monthly のいずれか）
 - `--exclude KEYWORDS` - 指定したキーワードを含むイベントを除外（カンマ区切りで複数指定可能）
 - `--exclude-mode MODE` - 除外キーワードのマッチングモードを指定（下記参照）
 
@@ -77,7 +77,9 @@ node index.js events [--start YYYY-MM-DD] [--end YYYY-MM-DD] [--format json|csv|
    - 読みやすい形式でイベントが表示されます
    - 各イベントの日付、時間、タイトル、所要時間が表示されます
 
-### 日別集計機能
+### 集計機能
+
+#### 日別集計
 
 `--summary daily` オプションを使用すると、指定した期間の日別時間集計を表示できます：
 
@@ -98,6 +100,48 @@ node index.js events --start 2025-05-01 --end 2025-05-31 --summary daily --forma
 日別集計（合計：120時間30分、85件）
 2025年5月1日: 7時間30分（5件）
 2025年5月2日: 6時間15分（4件）
+...
+```
+
+#### 週別集計
+
+`--summary weekly` オプションを使用すると、指定した期間の週別時間集計を表示できます：
+
+```bash
+node index.js events --start 2025-05-01 --end 2025-05-31 --summary weekly --format text
+```
+
+- 週ごとの合計時間と予定数を確認できます（日曜日から土曜日までを1週間として集計）
+- 終日イベントは時間集計には含まれません
+- 各出力形式（json/csv/text）に対応しています
+
+集計例（テキスト形式）：
+```
+2025年5月1日から2025年5月31日までの予定を取得します
+週別集計（合計：120時間30分、85件）
+2025年5月4日 〜 2025年5月10日: 35時間45分（20件）
+2025年5月11日 〜 2025年5月17日: 42時間15分（25件）
+...
+```
+
+#### 月別集計
+
+`--summary monthly` オプションを使用すると、指定した期間の月別時間集計を表示できます：
+
+```bash
+node index.js events --start 2025-01-01 --end 2025-12-31 --summary monthly --format text
+```
+
+- 月ごとの合計時間と予定数を確認できます
+- 終日イベントは時間集計には含まれません
+- 各出力形式（json/csv/text）に対応しています
+
+集計例（テキスト形式）：
+```
+2025年1月1日から2025年12月31日までの予定を取得します
+月別集計（合計：1250時間30分、850件）
+2025年1月: 95時間30分（65件）
+2025年2月: 105時間45分（72件）
 ...
 ```
 
@@ -167,10 +211,10 @@ node index.js events --exclude "本 業対応,就寝" --exclude-mode any
 ...
 ```
 
-これを日別集計と組み合わせることも可能です：
+これを集計機能と組み合わせることも可能です：
 
 ```bash
-node index.js events --summary daily --exclude 休憩,守護領域 --exclude-mode contains --format text
+node index.js events --summary monthly --exclude 休憩,守護領域 --exclude-mode contains --format text
 ```
 
 ## 所要時間の計算
@@ -192,7 +236,7 @@ node index.js help
 - 特定期間のカレンダー予定を取得して表示
 - JSON、CSV、テキスト形式での出力に対応
 - 各イベントの所要時間の自動計算
-- 日別の時間集計機能
+- 日別・週別・月別の時間集計機能
 - 特定キーワードを含むイベントの除外機能
   - 複数のマッチングモードをサポート（部分一致、完全一致、単語一致、複数単語など）
 - トークンはファイルに保存され、再利用可能

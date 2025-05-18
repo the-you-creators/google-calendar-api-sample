@@ -185,6 +185,44 @@ function filterEventsByExcludeKeywords(events, excludeKeywords, excludeMode = 'c
   });
 }
 
+// 週の開始日を取得する関数（日曜日起点）
+function getWeekStart(date) {
+  const d = new Date(date);
+  const day = d.getDay(); // 0: 日曜日, 1: 月曜日, ...
+  d.setDate(d.getDate() - day); // 日曜日に調整
+  return d;
+}
+
+// 週の表示用文字列を作成する関数
+function formatWeekRange(startDate) {
+  const endDate = new Date(startDate);
+  endDate.setDate(endDate.getDate() + 6); // 週の終わり（土曜日）
+
+  const startStr = `${startDate.getFullYear()}年${startDate.getMonth() + 1}月${startDate.getDate()}日`;
+  const endStr = `${endDate.getFullYear()}年${endDate.getMonth() + 1}月${endDate.getDate()}日`;
+  
+  return `${startStr} 〜 ${endStr}`;
+}
+
+// 月の表示用文字列を作成する関数
+function formatMonth(date) {
+  const d = new Date(date);
+  return `${d.getFullYear()}年${d.getMonth() + 1}月`;
+}
+
+// 月の最初の日を取得する関数
+function getMonthStart(date) {
+  const d = new Date(date);
+  d.setDate(1);
+  return d;
+}
+
+// 月の識別子を取得する関数
+function getMonthKey(date) {
+  const d = new Date(date);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+}
+
 // カレンダーの予定を取得
 async function listEvents(startDate, endDate, format = 'json', summary = null, excludeKeywords = [], excludeMode = 'contains') {
   try {
@@ -223,7 +261,7 @@ async function listEvents(startDate, endDate, format = 'json', summary = null, e
       endDate: timeMax.toISOString()
     };
     
-    if (summary !== 'daily') {
+    if (summary !== 'daily' && summary !== 'weekly' && summary !== 'monthly') {
       if (format === 'json') {
         console.log(JSON.stringify(startInfo));
       } else if (format === 'csv') {
@@ -370,6 +408,135 @@ async function listEvents(startDate, endDate, format = 'json', summary = null, e
         return;
       }
       
+      // 週別集計が指定されている場合
+      if (summary === 'weekly') {
+        // 週別の合計時間を計算
+        const weeklySummary = {};
+        
+        formattedEvents.forEach(event => {
+          const startDate = new Date(event.start.dateTime || event.start.date);
+          const weekStart = getWeekStart(startDate);
+          const weekKey = formatDateYMD(weekStart);
+          
+          if (!weeklySummary[weekKey]) {
+            weeklySummary[weekKey] = {
+              weekStart: weekKey,
+              formattedWeek: formatWeekRange(weekStart),
+              totalMinutes: 0,
+              events: 0
+            };
+          }
+          
+          // 終日イベントは集計しない（オプションで変更可能）
+          if (!event.isAllDay) {
+            weeklySummary[weekKey].totalMinutes += event.duration.minutes;
+          }
+          weeklySummary[weekKey].events += 1;
+        });
+        
+        // 週別集計結果をソートして出力
+        const sortedWeeklySummary = Object.values(weeklySummary).sort((a, b) => a.weekStart.localeCompare(b.weekStart));
+        
+        // 合計時間を計算
+        const totalMinutes = sortedWeeklySummary.reduce((sum, week) => sum + week.totalMinutes, 0);
+        
+        if (format === 'json') {
+          // 各週にフォーマットされた時間を追加
+          sortedWeeklySummary.forEach(week => {
+            week.formattedDuration = formatMinutes(week.totalMinutes);
+          });
+          
+          console.log(JSON.stringify({
+            period: startInfo.message,
+            totalWeeks: sortedWeeklySummary.length,
+            totalEvents: formattedEvents.length,
+            totalMinutes: totalMinutes,
+            totalFormatted: formatMinutes(totalMinutes),
+            excludeKeywords: excludeKeywords,
+            excludeMode: excludeMode,
+            weeklySummary: sortedWeeklySummary
+          }, null, 2));
+        } else if (format === 'csv') {
+          console.log('週,予定数,合計時間');
+          sortedWeeklySummary.forEach(week => {
+            console.log(`${week.weekStart},${week.events},${formatMinutes(week.totalMinutes)}`);
+          });
+          console.log(`合計,${formattedEvents.length},${formatMinutes(totalMinutes)}`);
+        } else {
+          console.log(`${startInfo.message}`);
+          console.log(`週別集計（合計：${formatMinutes(totalMinutes)}、${formattedEvents.length}件）`);
+          sortedWeeklySummary.forEach(week => {
+            console.log(`${week.formattedWeek}: ${formatMinutes(week.totalMinutes)}（${week.events}件）`);
+          });
+        }
+        
+        return;
+      }
+      
+      // 月別集計が指定されている場合
+      if (summary === 'monthly') {
+        // 月別の合計時間を計算
+        const monthlySummary = {};
+        
+        formattedEvents.forEach(event => {
+          const startDate = new Date(event.start.dateTime || event.start.date);
+          const monthKey = getMonthKey(startDate);
+          
+          if (!monthlySummary[monthKey]) {
+            monthlySummary[monthKey] = {
+              month: monthKey,
+              formattedMonth: formatMonth(startDate),
+              totalMinutes: 0,
+              events: 0
+            };
+          }
+          
+          // 終日イベントは集計しない（オプションで変更可能）
+          if (!event.isAllDay) {
+            monthlySummary[monthKey].totalMinutes += event.duration.minutes;
+          }
+          monthlySummary[monthKey].events += 1;
+        });
+        
+        // 月別集計結果をソートして出力
+        const sortedMonthlySummary = Object.values(monthlySummary).sort((a, b) => a.month.localeCompare(b.month));
+        
+        // 合計時間を計算
+        const totalMinutes = sortedMonthlySummary.reduce((sum, month) => sum + month.totalMinutes, 0);
+        
+        if (format === 'json') {
+          // 各月にフォーマットされた時間を追加
+          sortedMonthlySummary.forEach(month => {
+            month.formattedDuration = formatMinutes(month.totalMinutes);
+          });
+          
+          console.log(JSON.stringify({
+            period: startInfo.message,
+            totalMonths: sortedMonthlySummary.length,
+            totalEvents: formattedEvents.length,
+            totalMinutes: totalMinutes,
+            totalFormatted: formatMinutes(totalMinutes),
+            excludeKeywords: excludeKeywords,
+            excludeMode: excludeMode,
+            monthlySummary: sortedMonthlySummary
+          }, null, 2));
+        } else if (format === 'csv') {
+          console.log('月,予定数,合計時間');
+          sortedMonthlySummary.forEach(month => {
+            console.log(`${month.month},${month.events},${formatMinutes(month.totalMinutes)}`);
+          });
+          console.log(`合計,${formattedEvents.length},${formatMinutes(totalMinutes)}`);
+        } else {
+          console.log(`${startInfo.message}`);
+          console.log(`月別集計（合計：${formatMinutes(totalMinutes)}、${formattedEvents.length}件）`);
+          sortedMonthlySummary.forEach(month => {
+            console.log(`${month.formattedMonth}: ${formatMinutes(month.totalMinutes)}（${month.events}件）`);
+          });
+        }
+        
+        return;
+      }
+      
       const result = {
         year: timeMin.getFullYear(),
         month: timeMin.getMonth() + 1,
@@ -452,13 +619,16 @@ function showHelp() {
   console.log('使用方法:');
   console.log('認証URL取得: node index.js auth');
   console.log('トークン取得: node index.js token <認証コード>');
-  console.log('予定一覧取得: node index.js events [--start YYYY-MM-DD] [--end YYYY-MM-DD] [--format json|csv|text] [--summary daily] [--exclude keyword1,keyword2,...] [--exclude-mode contains|exact|word|any|all|regex]');
+  console.log('予定一覧取得: node index.js events [--start YYYY-MM-DD] [--end YYYY-MM-DD] [--format json|csv|text] [--summary daily|weekly|monthly] [--exclude keyword1,keyword2,...] [--exclude-mode contains|exact|word|any|all|regex]');
   console.log('ヘルプ表示: node index.js help');
   console.log('\nオプション:');
   console.log('  --start YYYY-MM-DD     開始日を指定 (例: 2025-05-01)');
   console.log('  --end YYYY-MM-DD       終了日を指定 (例: 2025-05-31)');
   console.log('  --format FORMAT        出力形式を指定 (json, csv, text のいずれか、デフォルトはjson)');
-  console.log('  --summary daily        日別の時間集計を表示');
+  console.log('  --summary TYPE         集計タイプを指定:');
+  console.log('                           daily: 日別の時間集計を表示');
+  console.log('                           weekly: 週別の時間集計を表示');
+  console.log('                           monthly: 月別の時間集計を表示');
   console.log('  --exclude KEYWORDS     指定したキーワードを含むイベントを除外 (カンマ区切りで複数指定可能)');
   console.log('  --exclude-mode MODE    除外キーワードのマッチングモードを指定:');
   console.log('                           contains: 部分一致（デフォルト）');
@@ -498,10 +668,12 @@ function parseArgs(args) {
       }
       i++;
     } else if (arg === '--summary' && i + 1 < args.length) {
-      if (args[i + 1].toLowerCase() === 'daily') {
-        options.summary = args[i + 1].toLowerCase();
+      const validSummaryTypes = ['daily', 'weekly', 'monthly'];
+      const summaryType = args[i + 1].toLowerCase();
+      if (validSummaryTypes.includes(summaryType)) {
+        options.summary = summaryType;
       } else {
-        console.error(`エラー: 無効な集計タイプ '${args[i + 1]}' が指定されました。daily を指定してください。`);
+        console.error(`エラー: 無効な集計タイプ '${args[i + 1]}' が指定されました。${validSummaryTypes.join(', ')} のいずれかを指定してください。`);
         process.exit(1);
       }
       i++;
