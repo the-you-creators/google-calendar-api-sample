@@ -129,7 +129,13 @@ function filterEventsByExcludeKeywords(events, excludeKeywords, excludeMode = 'c
       case 'any':
         // いずれかの単語がマッチ（スペース区切りの各単語）
         const words = keyword.split(/\s+/).filter(w => w.length > 0);
-        return words.some(word => text.includes(word));
+        // 各単語について、テキストに含まれているかをチェック
+        for (const word of words) {
+          if (text.includes(word)) {
+            return true;
+          }
+        }
+        return false;
       
       case 'all':
         // すべての単語がマッチ（スペース区切りの各単語）
@@ -475,36 +481,39 @@ function parseArgs(args) {
   };
   
   for (let i = 0; i < args.length; i++) {
-    if (args[i] === '--start' && i + 1 < args.length) {
+    const arg = args[i].toLowerCase(); // 小文字に変換して比較
+    
+    if (arg === '--start' && i + 1 < args.length) {
       options.startDate = args[i + 1];
       i++;
-    } else if (args[i] === '--end' && i + 1 < args.length) {
+    } else if (arg === '--end' && i + 1 < args.length) {
       options.endDate = args[i + 1];
       i++;
-    } else if (args[i] === '--format' && i + 1 < args.length) {
-      if (['json', 'csv', 'text'].includes(args[i + 1])) {
-        options.format = args[i + 1];
+    } else if (arg === '--format' && i + 1 < args.length) {
+      if (['json', 'csv', 'text'].includes(args[i + 1].toLowerCase())) {
+        options.format = args[i + 1].toLowerCase();
       } else {
         console.error(`エラー: 無効なフォーマット '${args[i + 1]}' が指定されました。json, csv, text のいずれかを指定してください。`);
         process.exit(1);
       }
       i++;
-    } else if (args[i] === '--summary' && i + 1 < args.length) {
-      if (args[i + 1] === 'daily') {
-        options.summary = args[i + 1];
+    } else if (arg === '--summary' && i + 1 < args.length) {
+      if (args[i + 1].toLowerCase() === 'daily') {
+        options.summary = args[i + 1].toLowerCase();
       } else {
         console.error(`エラー: 無効な集計タイプ '${args[i + 1]}' が指定されました。daily を指定してください。`);
         process.exit(1);
       }
       i++;
-    } else if ((args[i] === '--exclude' || args[i] === '--excludes') && i + 1 < args.length) {
+    } else if ((arg === '--exclude' || arg === '--excludes' || arg === '---excludes' || arg === '---exclude') && i + 1 < args.length) {
       // カンマ区切りで複数のキーワードを指定可能
       options.excludeKeywords = args[i + 1].split(',').map(k => k.trim()).filter(k => k.length > 0);
       i++;
-    } else if (args[i] === '--exclude-mode' && i + 1 < args.length) {
+    } else if ((arg === '--exclude-mode' || arg === '--excludemode') && i + 1 < args.length) {
       const validModes = ['contains', 'exact', 'word', 'any', 'all', 'regex'];
-      if (validModes.includes(args[i + 1])) {
-        options.excludeMode = args[i + 1];
+      const mode = args[i + 1].toLowerCase();
+      if (validModes.includes(mode)) {
+        options.excludeMode = mode;
       } else {
         console.error(`エラー: 無効な除外モード '${args[i + 1]}' が指定されました。${validModes.join(', ')} のいずれかを指定してください。`);
         process.exit(1);
