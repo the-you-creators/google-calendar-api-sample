@@ -47,13 +47,14 @@ npm install
 イベント取得時に以下のオプションが利用可能です：
 
 ```bash
-node index.js events [--start YYYY-MM-DD] [--end YYYY-MM-DD] [--format json|csv|text] [--summary daily]
+node index.js events [--start YYYY-MM-DD] [--end YYYY-MM-DD] [--format json|csv|text] [--summary daily] [--exclude keyword1,keyword2,...]
 ```
 
 - `--start YYYY-MM-DD` - 開始日を指定（例: 2025-05-01）
 - `--end YYYY-MM-DD` - 終了日を指定（例: 2025-05-31）
 - `--format FORMAT` - 出力形式を指定（json, csv, text のいずれか、デフォルトはjson）
 - `--summary daily` - 日別の時間集計を表示
+- `--exclude KEYWORDS` - 指定したキーワードを含むイベントを除外（カンマ区切りで複数指定可能）
 
 ### 出力形式
 
@@ -99,6 +100,32 @@ node index.js events --start 2025-05-01 --end 2025-05-31 --summary daily --forma
 ...
 ```
 
+### イベント除外機能
+
+`--exclude` オプションを使用すると、特定のキーワードを含むイベントを除外できます：
+
+```bash
+node index.js events --exclude 休憩,守護領域,不在
+```
+
+- カンマ区切りで複数のキーワードを指定可能
+- イベントのタイトル、説明、場所に指定したキーワードが含まれている場合、そのイベントは結果から除外されます
+- 除外された件数は出力に表示されます（JSON/テキスト形式の場合）
+
+除外例（テキスト形式）：
+```
+2025年5月1日から2025年5月31日までの予定を取得します
+除外キーワード [休憩, 守護領域, 不在] により25件のイベントが除外されました
+2025年5月の予定:
+...
+```
+
+これを日別集計と組み合わせることも可能です：
+
+```bash
+node index.js events --summary daily --exclude 休憩,守護領域 --format text
+```
+
 ## 所要時間の計算
 
 各イベントの所要時間が自動的に計算され、出力に含まれます：
@@ -119,6 +146,7 @@ node index.js help
 - JSON、CSV、テキスト形式での出力に対応
 - 各イベントの所要時間の自動計算
 - 日別の時間集計機能
+- 特定キーワードを含むイベントの除外機能
 - トークンはファイルに保存され、再利用可能
 
 ## 注意点

@@ -106,8 +106,35 @@ function formatDateJP(date) {
   return `${d.getFullYear()}年${d.getMonth() + 1}月${d.getDate()}日`;
 }
 
+// イベントを除外キーワードでフィルタリングする関数
+function filterEventsByExcludeKeywords(events, excludeKeywords) {
+  if (!excludeKeywords || excludeKeywords.length === 0) {
+    return events;
+  }
+  
+  return events.filter(event => {
+    // イベントの概要、説明、場所のいずれかに除外キーワードが含まれているか確認
+    const summary = event.summary || '';
+    const description = event.description || '';
+    const location = event.location || '';
+    
+    // 全てのキーワードについてチェック
+    for (const keyword of excludeKeywords) {
+      if (keyword && (
+        summary.includes(keyword) || 
+        description.includes(keyword) || 
+        location.includes(keyword)
+      )) {
+        return false; // 除外キーワードが含まれている場合は除外
+      }
+    }
+    
+    return true; // 除外キーワードが含まれていない場合は保持
+  });
+}
+
 // カレンダーの予定を取得
-async function listEvents(startDate, endDate, format = 'json', summary = null) {
+async function listEvents(startDate, endDate, format = 'json', summary = null, excludeKeywords = []) {
   try {
     // トークンが保存されていればロード
     if (fs.existsSync('tokens.json')) {
@@ -164,7 +191,26 @@ async function listEvents(startDate, endDate, format = 'json', summary = null) {
     
     const events = res.data.items;
     if (events && events.length) {
-      const formattedEvents = events.map((event) => {
+      // 除外キーワードでフィルタリング
+      const filteredEvents = filterEventsByExcludeKeywords(events, excludeKeywords);
+      
+      // 除外情報を表示
+      if (excludeKeywords && excludeKeywords.length > 0 && events.length !== filteredEvents.length) {
+        const excludedCount = events.length - filteredEvents.length;
+        if (format === 'json') {
+          console.log(JSON.stringify({
+            excludeInfo: {
+              keywords: excludeKeywords,
+              excludedCount: excludedCount,
+              message: `${excludedCount}件のイベントが除外されました`
+            }
+          }));
+        } else if (format !== 'csv') {
+          console.log(`除外キーワード [${excludeKeywords.join(', ')}] により${excludedCount}件のイベントが除外されました`);
+        }
+      }
+      
+      const formattedEvents = filteredEvents.map((event) => {
         const start = event.start.dateTime || event.start.date;
         const startDate = new Date(start);
         const end = event.end.dateTime || event.end.date;
@@ -240,6 +286,7 @@ async function listEvents(startDate, endDate, format = 'json', summary = null) {
             totalEvents: formattedEvents.length,
             totalMinutes: totalMinutes,
             totalFormatted: formatMinutes(totalMinutes),
+            excludeKeywords: excludeKeywords,
             dailySummary: sortedDailySummary
           }, null, 2));
         } else if (format === 'csv') {
@@ -265,6 +312,7 @@ async function listEvents(startDate, endDate, format = 'json', summary = null) {
         startDate: timeMin.toISOString(),
         endDate: timeMax.toISOString(),
         totalEvents: formattedEvents.length,
+        excludeKeywords: excludeKeywords,
         events: formattedEvents
       };
       
@@ -309,6 +357,7 @@ async function listEvents(startDate, endDate, format = 'json', summary = null) {
           month: timeMin.getMonth() + 1,
           totalEvents: 0,
           events: [],
+          excludeKeywords: excludeKeywords,
           message: '指定期間の予定は見つかりませんでした'
         }));
       } else if (format === 'csv') {
@@ -337,13 +386,14 @@ function showHelp() {
   console.log('使用方法:');
   console.log('認証URL取得: node index.js auth');
   console.log('トークン取得: node index.js token <認証コード>');
-  console.log('予定一覧取得: node index.js events [--start YYYY-MM-DD] [--end YYYY-MM-DD] [--format json|csv|text] [--summary daily]');
+  console.log('予定一覧取得: node index.js events [--start YYYY-MM-DD] [--end YYYY-MM-DD] [--format json|csv|text] [--summary daily] [--exclude keyword1,keyword2,...]');
   console.log('ヘルプ表示: node index.js help');
   console.log('\nオプション:');
   console.log('  --start YYYY-MM-DD   開始日を指定 (例: 2025-05-01)');
   console.log('  --end YYYY-MM-DD     終了日を指定 (例: 2025-05-31)');
   console.log('  --format FORMAT      出力形式を指定 (json, csv, text のいずれか、デフォルトはjson)');
   console.log('  --summary daily      日別の時間集計を表示');
+  console.log('  --exclude KEYWORDS   指定したキーワードを含むイベントを除外 (カンマ区切りで複数指定可能)');
 }
 
 // コマンドライン引数を解析
@@ -352,7 +402,8 @@ function parseArgs(args) {
     startDate: null,
     endDate: null,
     format: 'json',
-    summary: null
+    summary: null,
+    excludeKeywords: []
   };
   
   for (let i = 0; i < args.length; i++) {
@@ -378,6 +429,10 @@ function parseArgs(args) {
         process.exit(1);
       }
       i++;
+    } else if (args[i] === '--exclude' && i + 1 < args.length) {
+      // カンマ区切りで複数のキーワードを指定可能
+      options.excludeKeywords = args[i + 1].split(',').map(k => k.trim()).filter(k => k.length > 0);
+      i++;
     }
   }
   
@@ -394,7 +449,7 @@ if (command === 'auth') {
   getTokenFromCode(args[1]);
 } else if (command === 'events') {
   const options = parseArgs(args.slice(1));
-  listEvents(options.startDate, options.endDate, options.format, options.summary);
+  listEvents(options.startDate, options.endDate, options.format, options.summary, options.excludeKeywords);
 } else if (command === 'help') {
   showHelp();
 } else {
