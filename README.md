@@ -47,7 +47,7 @@ npm install
 イベント取得時に以下のオプションが利用可能です：
 
 ```bash
-node index.js events [--start YYYY-MM-DD] [--end YYYY-MM-DD] [--format json|csv|text] [--summary daily] [--exclude keyword1,keyword2,...]
+node index.js events [--start YYYY-MM-DD] [--end YYYY-MM-DD] [--format json|csv|text] [--summary daily] [--exclude keyword1,keyword2,...] [--exclude-mode contains|exact|word|any|all|regex]
 ```
 
 - `--start YYYY-MM-DD` - 開始日を指定（例: 2025-05-01）
@@ -55,6 +55,7 @@ node index.js events [--start YYYY-MM-DD] [--end YYYY-MM-DD] [--format json|csv|
 - `--format FORMAT` - 出力形式を指定（json, csv, text のいずれか、デフォルトはjson）
 - `--summary daily` - 日別の時間集計を表示
 - `--exclude KEYWORDS` - 指定したキーワードを含むイベントを除外（カンマ区切りで複数指定可能）
+- `--exclude-mode MODE` - 除外キーワードのマッチングモードを指定（下記参照）
 
 ### 出力形式
 
@@ -112,10 +113,56 @@ node index.js events --exclude 休憩,守護領域,不在
 - イベントのタイトル、説明、場所に指定したキーワードが含まれている場合、そのイベントは結果から除外されます
 - 除外された件数は出力に表示されます（JSON/テキスト形式の場合）
 
+#### マッチングモード
+
+`--exclude-mode` オプションを使用すると、キーワードのマッチング方法を変更できます：
+
+```bash
+node index.js events --exclude "本 業対応,就寝" --exclude-mode any
+```
+
+以下のモードが利用可能です：
+
+- `contains` - 部分一致（デフォルト）：キーワードがテキストの一部として含まれていれば一致
+  ```bash
+  # 「休憩」という文字が含まれるイベントを除外
+  node index.js events --exclude 休憩
+  ```
+
+- `exact` - 完全一致：テキストがキーワードと完全に一致する場合のみマッチ
+  ```bash
+  # タイトルが「休憩」だけのイベントのみ除外（「休憩中」などは除外されない）
+  node index.js events --exclude 休憩 --exclude-mode exact
+  ```
+
+- `word` - 単語一致：キーワードが単語として完全に一致する場合にマッチ
+  ```bash
+  # 「休憩」が単語として含まれるイベントを除外（「休憩中」は除外されないが「昼休憩」は除外）
+  node index.js events --exclude 休憩 --exclude-mode word
+  ```
+
+- `any` - いずれかの単語が一致：キーワード内のスペースで区切られた単語のいずれかが含まれていればマッチ
+  ```bash
+  # 「本」または「業対応」のいずれかが含まれるイベントを除外
+  node index.js events --exclude "本 業対応" --exclude-mode any
+  ```
+
+- `all` - すべての単語が一致：キーワード内のスペースで区切られた単語のすべてが含まれていればマッチ
+  ```bash
+  # 「本」と「業対応」の両方が含まれるイベントを除外
+  node index.js events --exclude "本 業対応" --exclude-mode all
+  ```
+
+- `regex` - 正規表現：キーワードを正規表現パターンとして扱い、マッチングを行う
+  ```bash
+  # 「本業」または「対応」を含むイベントを除外
+  node index.js events --exclude "本業|対応" --exclude-mode regex
+  ```
+
 除外例（テキスト形式）：
 ```
 2025年5月1日から2025年5月31日までの予定を取得します
-除外キーワード [休憩, 守護領域, 不在] により25件のイベントが除外されました
+除外キーワード [休憩, 守護領域, 不在] が部分一致モードで25件のイベントを除外しました
 2025年5月の予定:
 ...
 ```
@@ -123,7 +170,7 @@ node index.js events --exclude 休憩,守護領域,不在
 これを日別集計と組み合わせることも可能です：
 
 ```bash
-node index.js events --summary daily --exclude 休憩,守護領域 --format text
+node index.js events --summary daily --exclude 休憩,守護領域 --exclude-mode contains --format text
 ```
 
 ## 所要時間の計算
@@ -147,6 +194,7 @@ node index.js help
 - 各イベントの所要時間の自動計算
 - 日別の時間集計機能
 - 特定キーワードを含むイベントの除外機能
+  - 複数のマッチングモードをサポート（部分一致、完全一致、単語一致、複数単語など）
 - トークンはファイルに保存され、再利用可能
 
 ## 注意点
