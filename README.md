@@ -47,12 +47,13 @@ npm install
 イベント取得時に以下のオプションが利用可能です：
 
 ```bash
-node index.js events [--start YYYY-MM-DD] [--end YYYY-MM-DD] [--format json|csv|text]
+node index.js events [--start YYYY-MM-DD] [--end YYYY-MM-DD] [--format json|csv|text] [--summary daily]
 ```
 
 - `--start YYYY-MM-DD` - 開始日を指定（例: 2025-05-01）
 - `--end YYYY-MM-DD` - 終了日を指定（例: 2025-05-31）
 - `--format FORMAT` - 出力形式を指定（json, csv, text のいずれか、デフォルトはjson）
+- `--summary daily` - 日別の時間集計を表示
 
 ### 出力形式
 
@@ -74,6 +75,30 @@ node index.js events [--start YYYY-MM-DD] [--end YYYY-MM-DD] [--format json|csv|
    - 読みやすい形式でイベントが表示されます
    - 各イベントの日付、時間、タイトル、所要時間が表示されます
 
+### 日別集計機能
+
+`--summary daily` オプションを使用すると、指定した期間の日別時間集計を表示できます：
+
+```bash
+node index.js events --start 2025-05-01 --end 2025-05-31 --summary daily --format text
+```
+
+- 日ごとの合計時間と予定数を確認できます
+- 終日イベントは時間集計には含まれません
+- 出力形式（json/csv/text）によって表示方法が変わります：
+  - JSON: 構造化された日別集計データ（日付、総時間、イベント数など）
+  - CSV: 日付、予定数、合計時間の一覧
+  - TEXT: 読みやすい形式での日別集計表示
+
+集計例（テキスト形式）：
+```
+2025年5月1日から2025年5月31日までの予定を取得します
+日別集計（合計：120時間30分、85件）
+2025年5月1日: 7時間30分（5件）
+2025年5月2日: 6時間15分（4件）
+...
+```
+
 ## 所要時間の計算
 
 各イベントの所要時間が自動的に計算され、出力に含まれます：
@@ -93,6 +118,7 @@ node index.js help
 - 特定期間のカレンダー予定を取得して表示
 - JSON、CSV、テキスト形式での出力に対応
 - 各イベントの所要時間の自動計算
+- 日別の時間集計機能
 - トークンはファイルに保存され、再利用可能
 
 ## 注意点

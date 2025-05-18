@@ -75,8 +75,39 @@ function calculateDuration(startObj, endObj) {
   };
 }
 
+// 分を時間と分に変換して整形する関数
+function formatMinutes(totalMinutes) {
+  const hours = Math.floor(totalMinutes / 60);
+  const minutes = totalMinutes % 60;
+  
+  let formatted = '';
+  if (hours > 0) {
+    formatted += `${hours}時間`;
+  }
+  if (minutes > 0 || hours === 0) {
+    formatted += `${minutes}分`;
+  }
+  
+  return formatted;
+}
+
+// 日付をYYYY-MM-DD形式に変換する関数
+function formatDateYMD(date) {
+  const d = new Date(date);
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+// 日付を日本語形式に変換する関数
+function formatDateJP(date) {
+  const d = new Date(date);
+  return `${d.getFullYear()}年${d.getMonth() + 1}月${d.getDate()}日`;
+}
+
 // カレンダーの予定を取得
-async function listEvents(startDate, endDate, format = 'json') {
+async function listEvents(startDate, endDate, format = 'json', summary = null) {
   try {
     // トークンが保存されていればロード
     if (fs.existsSync('tokens.json')) {
@@ -113,12 +144,14 @@ async function listEvents(startDate, endDate, format = 'json') {
       endDate: timeMax.toISOString()
     };
     
-    if (format === 'json') {
-      console.log(JSON.stringify(startInfo));
-    } else if (format === 'csv') {
-      console.log(`期間,${startInfo.message}`);
-    } else {
-      console.log(startInfo.message);
+    if (summary !== 'daily') {
+      if (format === 'json') {
+        console.log(JSON.stringify(startInfo));
+      } else if (format === 'csv') {
+        console.log(`期間,${startInfo.message}`);
+      } else {
+        console.log(startInfo.message);
+      }
     }
     
     const res = await calendar.events.list({
@@ -163,6 +196,68 @@ async function listEvents(startDate, endDate, format = 'json') {
           attendees: event.attendees || []
         };
       });
+      
+      // 日別集計が指定されている場合
+      if (summary === 'daily') {
+        // 日別の合計時間を計算
+        const dailySummary = {};
+        
+        formattedEvents.forEach(event => {
+          const startDate = new Date(event.start.dateTime || event.start.date);
+          const dateKey = formatDateYMD(startDate);
+          
+          if (!dailySummary[dateKey]) {
+            dailySummary[dateKey] = {
+              date: dateKey,
+              formattedDate: formatDateJP(startDate),
+              totalMinutes: 0,
+              events: 0
+            };
+          }
+          
+          // 終日イベントは集計しない（オプションで変更可能）
+          if (!event.isAllDay) {
+            dailySummary[dateKey].totalMinutes += event.duration.minutes;
+          }
+          dailySummary[dateKey].events += 1;
+        });
+        
+        // 日別集計結果をソートして出力
+        const sortedDailySummary = Object.values(dailySummary).sort((a, b) => a.date.localeCompare(b.date));
+        
+        // 合計時間を計算
+        const totalMinutes = sortedDailySummary.reduce((sum, day) => sum + day.totalMinutes, 0);
+        
+        if (format === 'json') {
+          // 各日にフォーマットされた時間を追加
+          sortedDailySummary.forEach(day => {
+            day.formattedDuration = formatMinutes(day.totalMinutes);
+          });
+          
+          console.log(JSON.stringify({
+            period: startInfo.message,
+            totalDays: sortedDailySummary.length,
+            totalEvents: formattedEvents.length,
+            totalMinutes: totalMinutes,
+            totalFormatted: formatMinutes(totalMinutes),
+            dailySummary: sortedDailySummary
+          }, null, 2));
+        } else if (format === 'csv') {
+          console.log('日付,予定数,合計時間');
+          sortedDailySummary.forEach(day => {
+            console.log(`${day.date},${day.events},${formatMinutes(day.totalMinutes)}`);
+          });
+          console.log(`合計,${formattedEvents.length},${formatMinutes(totalMinutes)}`);
+        } else {
+          console.log(`${startInfo.message}`);
+          console.log(`日別集計（合計：${formatMinutes(totalMinutes)}、${formattedEvents.length}件）`);
+          sortedDailySummary.forEach(day => {
+            console.log(`${day.formattedDate}: ${formatMinutes(day.totalMinutes)}（${day.events}件）`);
+          });
+        }
+        
+        return;
+      }
       
       const result = {
         year: timeMin.getFullYear(),
@@ -242,12 +337,13 @@ function showHelp() {
   console.log('使用方法:');
   console.log('認証URL取得: node index.js auth');
   console.log('トークン取得: node index.js token <認証コード>');
-  console.log('予定一覧取得: node index.js events [--start YYYY-MM-DD] [--end YYYY-MM-DD] [--format json|csv|text]');
+  console.log('予定一覧取得: node index.js events [--start YYYY-MM-DD] [--end YYYY-MM-DD] [--format json|csv|text] [--summary daily]');
   console.log('ヘルプ表示: node index.js help');
   console.log('\nオプション:');
   console.log('  --start YYYY-MM-DD   開始日を指定 (例: 2025-05-01)');
   console.log('  --end YYYY-MM-DD     終了日を指定 (例: 2025-05-31)');
   console.log('  --format FORMAT      出力形式を指定 (json, csv, text のいずれか、デフォルトはjson)');
+  console.log('  --summary daily      日別の時間集計を表示');
 }
 
 // コマンドライン引数を解析
@@ -255,7 +351,8 @@ function parseArgs(args) {
   const options = {
     startDate: null,
     endDate: null,
-    format: 'json'
+    format: 'json',
+    summary: null
   };
   
   for (let i = 0; i < args.length; i++) {
@@ -270,6 +367,14 @@ function parseArgs(args) {
         options.format = args[i + 1];
       } else {
         console.error(`エラー: 無効なフォーマット '${args[i + 1]}' が指定されました。json, csv, text のいずれかを指定してください。`);
+        process.exit(1);
+      }
+      i++;
+    } else if (args[i] === '--summary' && i + 1 < args.length) {
+      if (args[i + 1] === 'daily') {
+        options.summary = args[i + 1];
+      } else {
+        console.error(`エラー: 無効な集計タイプ '${args[i + 1]}' が指定されました。daily を指定してください。`);
         process.exit(1);
       }
       i++;
@@ -289,7 +394,7 @@ if (command === 'auth') {
   getTokenFromCode(args[1]);
 } else if (command === 'events') {
   const options = parseArgs(args.slice(1));
-  listEvents(options.startDate, options.endDate, options.format);
+  listEvents(options.startDate, options.endDate, options.format, options.summary);
 } else if (command === 'help') {
   showHelp();
 } else {
