@@ -185,6 +185,85 @@ function filterEventsByExcludeKeywords(events, excludeKeywords, excludeMode = 'c
   });
 }
 
+// イベントをインクルードキーワードでフィルタリングする関数
+function filterEventsByIncludeKeywords(events, includeKeywords, includeMode = 'contains') {
+  if (!includeKeywords || includeKeywords.length === 0) {
+    return events;
+  }
+  
+  // includeModeに応じたマッチング関数を作成
+  const matchesKeyword = (text, keyword) => {
+    if (!text || !keyword) return false;
+    
+    switch (includeMode) {
+      case 'exact':
+        // 完全一致
+        return text === keyword;
+      
+      case 'word':
+        // 単語単位のマッチング
+        const regex = new RegExp(`\\b${escapeRegExp(keyword)}\\b`, 'i');
+        return regex.test(text);
+      
+      case 'any':
+        // いずれかの単語がマッチ（スペース区切りの各単語）
+        const words = keyword.split(/\s+/).filter(w => w.length > 0);
+        // 各単語について、テキストに含まれているかをチェック
+        for (const word of words) {
+          if (text.includes(word)) {
+            return true;
+          }
+        }
+        return false;
+      
+      case 'all':
+        // すべての単語がマッチ（スペース区切りの各単語）
+        const allWords = keyword.split(/\s+/).filter(w => w.length > 0);
+        return allWords.every(word => text.includes(word));
+      
+      case 'regex':
+        // 正規表現
+        try {
+          const regexObj = new RegExp(keyword, 'i');
+          return regexObj.test(text);
+        } catch (e) {
+          console.error(`無効な正規表現: ${keyword}`);
+          return false;
+        }
+      
+      case 'contains':
+      default:
+        // 部分一致（デフォルト）
+        return text.includes(keyword);
+    }
+  };
+  
+  // 正規表現でのエスケープ用関数
+  function escapeRegExp(string) {
+    return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  }
+  
+  return events.filter(event => {
+    // イベントの概要、説明、場所のいずれかにインクルードキーワードが含まれているか確認
+    const summary = event.summary || '';
+    const description = event.description || '';
+    const location = event.location || '';
+    
+    // いずれかのキーワードがマッチした場合に含める
+    for (const keyword of includeKeywords) {
+      if (keyword && (
+        matchesKeyword(summary, keyword) || 
+        matchesKeyword(description, keyword) || 
+        matchesKeyword(location, keyword)
+      )) {
+        return true; // インクルードキーワードが含まれている場合は含める
+      }
+    }
+    
+    return includeKeywords.length === 0; // キーワードが指定されているが、どれにもマッチしない場合は除外
+  });
+}
+
 // 週の開始日を取得する関数（日曜日起点）
 function getWeekStart(date) {
   const d = new Date(date);
@@ -224,7 +303,7 @@ function getMonthKey(date) {
 }
 
 // カレンダーの予定を取得
-async function listEvents(startDate, endDate, format = 'json', summary = null, excludeKeywords = [], excludeMode = 'contains') {
+async function listEvents(startDate, endDate, format = 'json', summary = null, excludeKeywords = [], excludeMode = 'contains', includeKeywords = [], includeMode = 'contains') {
   try {
     // トークンが保存されていればロード
     if (fs.existsSync('tokens.json')) {
@@ -281,12 +360,45 @@ async function listEvents(startDate, endDate, format = 'json', summary = null, e
     
     const events = res.data.items;
     if (events && events.length) {
-      // 除外キーワードでフィルタリング
-      const filteredEvents = filterEventsByExcludeKeywords(events, excludeKeywords, excludeMode);
+      // まず含めるキーワードでフィルタリング
+      let filteredEvents = events;
       
-      // 除外情報を表示
-      if (excludeKeywords && excludeKeywords.length > 0 && events.length !== filteredEvents.length) {
-        const excludedCount = events.length - filteredEvents.length;
+      if (includeKeywords && includeKeywords.length > 0) {
+        filteredEvents = filterEventsByIncludeKeywords(filteredEvents, includeKeywords, includeMode);
+        
+        // インクルード情報を表示
+        const includedCount = filteredEvents.length;
+        const includeModeText = {
+          'contains': '部分一致',
+          'exact': '完全一致',
+          'word': '単語一致',
+          'any': 'いずれかの単語一致',
+          'all': 'すべての単語一致',
+          'regex': '正規表現'
+        }[includeMode] || '部分一致';
+        
+        if (format === 'json') {
+          console.log(JSON.stringify({
+            includeInfo: {
+              keywords: includeKeywords,
+              mode: includeMode,
+              modeText: includeModeText,
+              includedCount: includedCount,
+              message: `${includeModeText}モードで${includedCount}件のイベントが含まれました`
+            }
+          }));
+        } else if (format !== 'csv') {
+          console.log(`含めるキーワード [${includeKeywords.join(', ')}] が${includeModeText}モードで${includedCount}件のイベントを抽出しました`);
+        }
+      }
+      
+      // 次に除外キーワードでフィルタリング
+      if (excludeKeywords && excludeKeywords.length > 0) {
+        const beforeExcludeCount = filteredEvents.length;
+        filteredEvents = filterEventsByExcludeKeywords(filteredEvents, excludeKeywords, excludeMode);
+        
+        // 除外情報を表示
+        const excludedCount = beforeExcludeCount - filteredEvents.length;
         const excludeModeText = {
           'contains': '部分一致',
           'exact': '完全一致',
@@ -389,6 +501,8 @@ async function listEvents(startDate, endDate, format = 'json', summary = null, e
             totalFormatted: formatMinutes(totalMinutes),
             excludeKeywords: excludeKeywords,
             excludeMode: excludeMode,
+            includeKeywords: includeKeywords,
+            includeMode: includeMode,
             dailySummary: sortedDailySummary
           }, null, 2));
         } else if (format === 'csv') {
@@ -454,6 +568,8 @@ async function listEvents(startDate, endDate, format = 'json', summary = null, e
             totalFormatted: formatMinutes(totalMinutes),
             excludeKeywords: excludeKeywords,
             excludeMode: excludeMode,
+            includeKeywords: includeKeywords,
+            includeMode: includeMode,
             weeklySummary: sortedWeeklySummary
           }, null, 2));
         } else if (format === 'csv') {
@@ -518,6 +634,8 @@ async function listEvents(startDate, endDate, format = 'json', summary = null, e
             totalFormatted: formatMinutes(totalMinutes),
             excludeKeywords: excludeKeywords,
             excludeMode: excludeMode,
+            includeKeywords: includeKeywords,
+            includeMode: includeMode,
             monthlySummary: sortedMonthlySummary
           }, null, 2));
         } else if (format === 'csv') {
@@ -545,6 +663,8 @@ async function listEvents(startDate, endDate, format = 'json', summary = null, e
         totalEvents: formattedEvents.length,
         excludeKeywords: excludeKeywords,
         excludeMode: excludeMode,
+        includeKeywords: includeKeywords,
+        includeMode: includeMode,
         events: formattedEvents
       };
       
@@ -591,6 +711,8 @@ async function listEvents(startDate, endDate, format = 'json', summary = null, e
           events: [],
           excludeKeywords: excludeKeywords,
           excludeMode: excludeMode,
+          includeKeywords: includeKeywords,
+          includeMode: includeMode,
           message: '指定期間の予定は見つかりませんでした'
         }));
       } else if (format === 'csv') {
@@ -614,31 +736,6 @@ async function listEvents(startDate, endDate, format = 'json', summary = null, e
   }
 }
 
-// ヘルプメッセージを表示
-function showHelp() {
-  console.log('使用方法:');
-  console.log('認証URL取得: node index.js auth');
-  console.log('トークン取得: node index.js token <認証コード>');
-  console.log('予定一覧取得: node index.js events [--start YYYY-MM-DD] [--end YYYY-MM-DD] [--format json|csv|text] [--summary daily|weekly|monthly] [--exclude keyword1,keyword2,...] [--exclude-mode contains|exact|word|any|all|regex]');
-  console.log('ヘルプ表示: node index.js help');
-  console.log('\nオプション:');
-  console.log('  --start YYYY-MM-DD     開始日を指定 (例: 2025-05-01)');
-  console.log('  --end YYYY-MM-DD       終了日を指定 (例: 2025-05-31)');
-  console.log('  --format FORMAT        出力形式を指定 (json, csv, text のいずれか、デフォルトはjson)');
-  console.log('  --summary TYPE         集計タイプを指定:');
-  console.log('                           daily: 日別の時間集計を表示');
-  console.log('                           weekly: 週別の時間集計を表示');
-  console.log('                           monthly: 月別の時間集計を表示');
-  console.log('  --exclude KEYWORDS     指定したキーワードを含むイベントを除外 (カンマ区切りで複数指定可能)');
-  console.log('  --exclude-mode MODE    除外キーワードのマッチングモードを指定:');
-  console.log('                           contains: 部分一致（デフォルト）');
-  console.log('                           exact: 完全一致');
-  console.log('                           word: 単語単位で一致');
-  console.log('                           any: スペース区切りの単語のいずれかが一致');
-  console.log('                           all: スペース区切りの単語全てが一致');
-  console.log('                           regex: 正規表現');
-}
-
 // コマンドライン引数を解析
 function parseArgs(args) {
   const options = {
@@ -647,11 +744,19 @@ function parseArgs(args) {
     format: 'json',
     summary: null,
     excludeKeywords: [],
-    excludeMode: 'contains'
+    excludeMode: 'contains',
+    includeKeywords: [],
+    includeMode: 'contains'
   };
   
   for (let i = 0; i < args.length; i++) {
     const arg = args[i].toLowerCase(); // 小文字に変換して比較
+    
+    // ---で始まるオプションはエラー
+    if (arg.startsWith('---')) {
+      console.error(`エラー: 無効なオプション '${args[i]}' が指定されました。`);
+      process.exit(1);
+    }
     
     if (arg === '--start' && i + 1 < args.length) {
       options.startDate = args[i + 1];
@@ -677,9 +782,17 @@ function parseArgs(args) {
         process.exit(1);
       }
       i++;
-    } else if ((arg === '--exclude' || arg === '--excludes' || arg === '---excludes' || arg === '---exclude') && i + 1 < args.length) {
-      // カンマ区切りで複数のキーワードを指定可能
-      options.excludeKeywords = args[i + 1].split(',').map(k => k.trim()).filter(k => k.length > 0);
+    } else if ((arg === '--exclude' || arg === '--excludes') && i + 1 < args.length) {
+      // スペースまたはカンマで区切られた複数のキーワードを指定可能
+      const keywordsRaw = args[i + 1];
+      
+      // カンマが含まれている場合はカンマで分割
+      if (keywordsRaw.includes(',')) {
+        options.excludeKeywords = keywordsRaw.split(',').map(k => k.trim()).filter(k => k.length > 0);
+      } else {
+        // カンマがない場合はスペースで分割
+        options.excludeKeywords = keywordsRaw.split(/\s+/).filter(k => k.length > 0);
+      }
       i++;
     } else if ((arg === '--exclude-mode' || arg === '--excludemode') && i + 1 < args.length) {
       const validModes = ['contains', 'exact', 'word', 'any', 'all', 'regex'];
@@ -691,10 +804,65 @@ function parseArgs(args) {
         process.exit(1);
       }
       i++;
+    } else if ((arg === '--include' || arg === '--includes') && i + 1 < args.length) {
+      // スペースまたはカンマで区切られた複数のキーワードを指定可能
+      const keywordsRaw = args[i + 1];
+      
+      // カンマが含まれている場合はカンマで分割
+      if (keywordsRaw.includes(',')) {
+        options.includeKeywords = keywordsRaw.split(',').map(k => k.trim()).filter(k => k.length > 0);
+      } else {
+        // カンマがない場合はスペースで分割
+        options.includeKeywords = keywordsRaw.split(/\s+/).filter(k => k.length > 0);
+      }
+      i++;
+    } else if ((arg === '--include-mode' || arg === '--includemode') && i + 1 < args.length) {
+      const validModes = ['contains', 'exact', 'word', 'any', 'all', 'regex'];
+      const mode = args[i + 1].toLowerCase();
+      if (validModes.includes(mode)) {
+        options.includeMode = mode;
+      } else {
+        console.error(`エラー: 無効な含めるモード '${args[i + 1]}' が指定されました。${validModes.join(', ')} のいずれかを指定してください。`);
+        process.exit(1);
+      }
+      i++;
     }
   }
   
   return options;
+}
+
+// ヘルプメッセージを表示
+function showHelp() {
+  console.log('使用方法:');
+  console.log('認証URL取得: node index.js auth');
+  console.log('トークン取得: node index.js token <認証コード>');
+  console.log('予定一覧取得: node index.js events [--start YYYY-MM-DD] [--end YYYY-MM-DD] [--format json|csv|text] [--summary daily|weekly|monthly] [--include keyword1,keyword2,...] [--include-mode MODE] [--exclude keyword1,keyword2,...] [--exclude-mode MODE]');
+  console.log('ヘルプ表示: node index.js help');
+  console.log('\nオプション:');
+  console.log('  --start YYYY-MM-DD     開始日を指定 (例: 2025-05-01)');
+  console.log('  --end YYYY-MM-DD       終了日を指定 (例: 2025-05-31)');
+  console.log('  --format FORMAT        出力形式を指定 (json, csv, text のいずれか、デフォルトはjson)');
+  console.log('  --summary TYPE         集計タイプを指定:');
+  console.log('                           daily: 日別の時間集計を表示');
+  console.log('                           weekly: 週別の時間集計を表示');
+  console.log('                           monthly: 月別の時間集計を表示');
+  console.log('  --include KEYWORDS     指定したキーワードを含むイベントのみを含める (カンマ区切りで複数指定可能)');
+  console.log('  --include-mode MODE    含めるキーワードのマッチングモードを指定:');
+  console.log('                           contains: 部分一致（デフォルト）');
+  console.log('                           exact: 完全一致');
+  console.log('                           word: 単語単位で一致');
+  console.log('                           any: スペース区切りの単語のいずれかが一致');
+  console.log('                           all: スペース区切りの単語全てが一致');
+  console.log('                           regex: 正規表現');
+  console.log('  --exclude KEYWORDS     指定したキーワードを含むイベントを除外 (カンマ区切りで複数指定可能)');
+  console.log('  --exclude-mode MODE    除外キーワードのマッチングモードを指定:');
+  console.log('                           contains: 部分一致（デフォルト）');
+  console.log('                           exact: 完全一致');
+  console.log('                           word: 単語単位で一致');
+  console.log('                           any: スペース区切りの単語のいずれかが一致');
+  console.log('                           all: スペース区切りの単語全てが一致');
+  console.log('                           regex: 正規表現');
 }
 
 // コマンドライン引数で機能を切り替え
@@ -707,7 +875,7 @@ if (command === 'auth') {
   getTokenFromCode(args[1]);
 } else if (command === 'events') {
   const options = parseArgs(args.slice(1));
-  listEvents(options.startDate, options.endDate, options.format, options.summary, options.excludeKeywords, options.excludeMode);
+  listEvents(options.startDate, options.endDate, options.format, options.summary, options.excludeKeywords, options.excludeMode, options.includeKeywords, options.includeMode);
 } else if (command === 'help') {
   showHelp();
 } else {

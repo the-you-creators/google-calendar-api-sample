@@ -47,14 +47,16 @@ npm install
 イベント取得時に以下のオプションが利用可能です：
 
 ```bash
-node index.js events [--start YYYY-MM-DD] [--end YYYY-MM-DD] [--format json|csv|text] [--summary daily|weekly|monthly] [--exclude keyword1,keyword2,...] [--exclude-mode contains|exact|word|any|all|regex]
+node index.js events [--start YYYY-MM-DD] [--end YYYY-MM-DD] [--format json|csv|text] [--summary daily|weekly|monthly] [--include keyword1,keyword2,...] [--include-mode MODE] [--exclude keyword1,keyword2,...] [--exclude-mode MODE]
 ```
 
 - `--start YYYY-MM-DD` - 開始日を指定（例: 2025-05-01）
 - `--end YYYY-MM-DD` - 終了日を指定（例: 2025-05-31）
 - `--format FORMAT` - 出力形式を指定（json, csv, text のいずれか、デフォルトはjson）
 - `--summary TYPE` - 集計タイプを指定（daily, weekly, monthly のいずれか）
-- `--exclude KEYWORDS` - 指定したキーワードを含むイベントを除外（カンマ区切りで複数指定可能）
+- `--include KEYWORDS` - 指定したキーワードを含むイベントのみを含める（カンマまたはスペース区切りで複数指定可能）
+- `--include-mode MODE` - 含めるキーワードのマッチングモードを指定（下記参照）
+- `--exclude KEYWORDS` - 指定したキーワードを含むイベントを除外（カンマまたはスペース区切りで複数指定可能）
 - `--exclude-mode MODE` - 除外キーワードのマッチングモードを指定（下記参照）
 
 ### 出力形式
@@ -145,7 +147,26 @@ node index.js events --start 2025-01-01 --end 2025-12-31 --summary monthly --for
 ...
 ```
 
-### イベント除外機能
+### イベント絞り込み機能
+
+#### 含めるキーワード
+
+`--include` オプションを使用すると、特定のキーワードを含むイベントのみを抽出できます：
+
+```bash
+node index.js events --include ミーティング,会議
+```
+
+```bash
+# スペース区切りでも指定可能
+node index.js events --include "ミーティング 会議 打ち合わせ"
+```
+
+- カンマまたはスペース区切りで複数のキーワードを指定可能
+- イベントのタイトル、説明、場所に指定したキーワードが含まれている場合のみ、そのイベントが結果に含まれます
+- 抽出された件数は出力に表示されます（JSON/テキスト形式の場合）
+
+#### 除外キーワード
 
 `--exclude` オプションを使用すると、特定のキーワードを含むイベントを除外できます：
 
@@ -153,15 +174,24 @@ node index.js events --start 2025-01-01 --end 2025-12-31 --summary monthly --for
 node index.js events --exclude 休憩,守護領域,不在
 ```
 
-- カンマ区切りで複数のキーワードを指定可能
+```bash
+# スペース区切りでも指定可能
+node index.js events --exclude "休憩 守護領域 不在"
+```
+
+- カンマまたはスペース区切りで複数のキーワードを指定可能
 - イベントのタイトル、説明、場所に指定したキーワードが含まれている場合、そのイベントは結果から除外されます
 - 除外された件数は出力に表示されます（JSON/テキスト形式の場合）
 
 #### マッチングモード
 
-`--exclude-mode` オプションを使用すると、キーワードのマッチング方法を変更できます：
+`--include-mode`と`--exclude-mode`オプションを使用すると、キーワードのマッチング方法を変更できます：
 
 ```bash
+# 含めるキーワードのマッチングモードを指定
+node index.js events --include "社内 ミーティング" --include-mode all
+
+# 除外キーワードのマッチングモードを指定
 node index.js events --exclude "本 業対応,就寝" --exclude-mode any
 ```
 
@@ -169,52 +199,71 @@ node index.js events --exclude "本 業対応,就寝" --exclude-mode any
 
 - `contains` - 部分一致（デフォルト）：キーワードがテキストの一部として含まれていれば一致
   ```bash
+  # 「ミーティング」という文字が含まれるイベントのみを含める
+  node index.js events --include ミーティング
+  
   # 「休憩」という文字が含まれるイベントを除外
   node index.js events --exclude 休憩
   ```
 
 - `exact` - 完全一致：テキストがキーワードと完全に一致する場合のみマッチ
   ```bash
-  # タイトルが「休憩」だけのイベントのみ除外（「休憩中」などは除外されない）
+  # タイトルが「ミーティング」だけのイベントのみを含める
+  node index.js events --include ミーティング --include-mode exact
+  
+  # タイトルが「休憩」だけのイベントのみ除外
   node index.js events --exclude 休憩 --exclude-mode exact
   ```
 
 - `word` - 単語一致：キーワードが単語として完全に一致する場合にマッチ
   ```bash
-  # 「休憩」が単語として含まれるイベントを除外（「休憩中」は除外されないが「昼休憩」は除外）
+  # 「会議」が単語として含まれるイベントのみを含める
+  node index.js events --include 会議 --include-mode word
+  
+  # 「休憩」が単語として含まれるイベントを除外
   node index.js events --exclude 休憩 --exclude-mode word
   ```
 
 - `any` - いずれかの単語が一致：キーワード内のスペースで区切られた単語のいずれかが含まれていればマッチ
   ```bash
+  # 「ミーティング」または「会議」のいずれかが含まれるイベントのみを含める
+  node index.js events --include "ミーティング 会議" --include-mode any
+  
   # 「本」または「業対応」のいずれかが含まれるイベントを除外
   node index.js events --exclude "本 業対応" --exclude-mode any
   ```
 
 - `all` - すべての単語が一致：キーワード内のスペースで区切られた単語のすべてが含まれていればマッチ
   ```bash
+  # 「社内」と「ミーティング」の両方が含まれるイベントのみを含める
+  node index.js events --include "社内 ミーティング" --include-mode all
+  
   # 「本」と「業対応」の両方が含まれるイベントを除外
   node index.js events --exclude "本 業対応" --exclude-mode all
   ```
 
 - `regex` - 正規表現：キーワードを正規表現パターンとして扱い、マッチングを行う
   ```bash
+  # 「会議」または「ミーティング」を含むイベントのみを含める
+  node index.js events --include "会議|ミーティング" --include-mode regex
+  
   # 「本業」または「対応」を含むイベントを除外
   node index.js events --exclude "本業|対応" --exclude-mode regex
   ```
 
-除外例（テキスト形式）：
-```
-2025年5月1日から2025年5月31日までの予定を取得します
-除外キーワード [休憩, 守護領域, 不在] が部分一致モードで25件のイベントを除外しました
-2025年5月の予定:
-...
+除外・抽出の組み合わせ例：
+```bash
+# 「会議」を含むイベントのみを抽出し、「社内」を含むイベントを除外
+node index.js events --include 会議 --exclude 社内 --format text
+
+# 「顧客」と「ミーティング」の両方を含むイベントのみを抽出し、「休憩」を除外
+node index.js events --include "顧客 ミーティング" --include-mode all --exclude 休憩 --format text
 ```
 
 これを集計機能と組み合わせることも可能です：
 
 ```bash
-node index.js events --summary monthly --exclude 休憩,守護領域 --exclude-mode contains --format text
+node index.js events --summary monthly --include 会議 --exclude 休憩 --format text
 ```
 
 ## 所要時間の計算
@@ -237,7 +286,9 @@ node index.js help
 - JSON、CSV、テキスト形式での出力に対応
 - 各イベントの所要時間の自動計算
 - 日別・週別・月別の時間集計機能
-- 特定キーワードを含むイベントの除外機能
+- イベントの絞り込み機能
+  - 特定キーワードを含むイベントのみを抽出する機能
+  - 特定キーワードを含むイベントを除外する機能
   - 複数のマッチングモードをサポート（部分一致、完全一致、単語一致、複数単語など）
 - トークンはファイルに保存され、再利用可能
 
